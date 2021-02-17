@@ -163,14 +163,25 @@ class GradCAMpp(GradCAM):
         activations = self.activations['value'] # A
         b, k, u, v = gradients.size()
 
-        alpha_num = gradients.pow(2)
-        alpha_denom = gradients.pow(2).mul(2) + \
-                activations.mul(gradients.pow(3)).view(b, k, u*v).sum(-1, keepdim=True).view(b, k, 1, 1)
-        alpha_denom = torch.where(alpha_denom != 0.0, alpha_denom, torch.ones_like(alpha_denom))
+        if activation_function == "sigmoid":
+            alpha_num = 1 - 2 * score
+            global_sum = activations.view(b, k, u*v).sum(-1, keepdim=True).view(b, k, 1, 1)
+            alpha_denom = 2 * (1 - 2 * score) + global_sum.mul(gradients.mul(1 - 4*score + 2*score**2))
+            alpha_denom = torch.where(alpha_denom != 0.0, alpha_denom, torch.ones_like(alpha_denom))
 
-        alpha = alpha_num.div(alpha_denom+1e-7)
-        positive_gradients = F.relu(score.exp()*gradients) # ReLU(dY/dA) == ReLU(exp(S)*dS/dA))
-        weights = (alpha*positive_gradients).view(b, k, u*v).sum(-1).view(b, k, 1, 1)
+            alpha = alpha_num.div(alpha_denom+1e-7)
+            positive_gradients = F.relu(score * (1 - score) * gradients) # ReLU(dY/dA) == ReLU(Y*(1-Y)*dS/dA))
+            weights = (alpha*positive_gradients).view(b, k, u*v).sum(-1).view(b, k, 1, 1)
+
+        elif activation_function == "exp":
+            alpha_num = gradients.pow(2)
+            alpha_denom = gradients.pow(2).mul(2) + \
+                    activations.mul(gradients.pow(3)).view(b, k, u*v).sum(-1, keepdim=True).view(b, k, 1, 1)
+            alpha_denom = torch.where(alpha_denom != 0.0, alpha_denom, torch.ones_like(alpha_denom))
+
+            alpha = alpha_num.div(alpha_denom+1e-7)
+            positive_gradients = F.relu(score.exp()*gradients) # ReLU(dY/dA) == ReLU(exp(S)*dS/dA))
+            weights = (alpha*positive_gradients).view(b, k, u*v).sum(-1).view(b, k, 1, 1)
 
         saliency_map = (weights*activations).sum(1, keepdim=True)
         saliency_map = F.relu(saliency_map)
