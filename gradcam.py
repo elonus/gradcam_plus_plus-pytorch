@@ -158,7 +158,9 @@ class GradCAMpp(GradCAM):
         b, c, h, w = input.size()
 
         logit = self.model_arch(input)
-        if class_idx is None:
+        if type(logit) == int:
+            score = logit
+        elif class_idx is None:
             score = logit[:, logit.max(1)[-1]].squeeze()
         else:
             score = logit[:, class_idx].squeeze() 
