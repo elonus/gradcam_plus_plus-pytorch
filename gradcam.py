@@ -27,13 +27,18 @@ class GradCAM(object):
 
 
     Args:
-        model_dict (dict): a dictionary that contains 'model_type', 'arch', layer_name', 'input_size'(optional) as keys.
+        model_dict (dict): a dictionary that contains 'model_type', 'arch', 'layer_name', 'activation_function', 'input_size'(optional) as keys.
+                            activation_function is the activation function of the final layer to get the output. Must be in ('sigmoid', 'exp')
         verbose (bool): whether to print output size of the saliency map givien 'layer_name' and 'input_size' in model_dict.
     """
     def __init__(self, model_dict, verbose=False):
         model_type = model_dict['type']
         layer_name = model_dict['layer_name']
         self.model_arch = model_dict['arch']
+        self.activation_function = model_dict['activation_function']
+
+        if self.activation_function not in ('sigmoid', 'exp'):
+            raise ValueError("Invalid activation function")
 
         self.gradients = dict()
         self.activations = dict()
@@ -133,7 +138,8 @@ class GradCAMpp(GradCAM):
 
 
     Args:
-        model_dict (dict): a dictionary that contains 'model_type', 'arch', layer_name', 'input_size'(optional) as keys.
+        model_dict (dict): a dictionary that contains 'model_type', 'arch', 'layer_name', 'activation_function', 'input_size'(optional) as keys.
+                            activation_function is the activation function of the final layer to get the output. Must be in ('sigmoid', 'exp')
         verbose (bool): whether to print output size of the saliency map givien 'layer_name' and 'input_size' in model_dict.
     """
     def __init__(self, model_dict, verbose=False):
@@ -163,7 +169,7 @@ class GradCAMpp(GradCAM):
         activations = self.activations['value'] # A
         b, k, u, v = gradients.size()
 
-        if activation_function == "sigmoid":
+        if self.activation_function == "sigmoid":
             alpha_num = 1 - 2 * score
             global_sum = activations.view(b, k, u*v).sum(-1, keepdim=True).view(b, k, 1, 1)
             alpha_denom = 2 * (1 - 2 * score) + global_sum.mul(gradients.mul(1 - 4*score + 2*score**2))
@@ -173,7 +179,7 @@ class GradCAMpp(GradCAM):
             positive_gradients = F.relu(score * (1 - score) * gradients) # ReLU(dY/dA) == ReLU(Y*(1-Y)*dS/dA))
             weights = (alpha*positive_gradients).view(b, k, u*v).sum(-1).view(b, k, 1, 1)
 
-        elif activation_function == "exp":
+        elif self.activation_function == "exp":
             alpha_num = gradients.pow(2)
             alpha_denom = gradients.pow(2).mul(2) + \
                     activations.mul(gradients.pow(3)).view(b, k, u*v).sum(-1, keepdim=True).view(b, k, 1, 1)
